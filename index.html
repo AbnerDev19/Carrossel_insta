@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Split Image - Carrossel</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-color: #f8f9fa;
+            --card-bg: #ffffff;
+            --text-primary: #202124;
+            --text-secondary: #5f6368;
+            --border-color: #dadce0;
+            --accent-gradient: linear-gradient(135deg, #1a73e8, #8ab4f8);
+            --radius-lg: 24px;
+            --radius-md: 12px;
+            --shadow-sm: 0 1px 2px 0 rgba(60,64,67,0.3), 0 1px 3px 1px rgba(60,64,67,0.15);
+            --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 2rem;
+        }
+
+        .container {
+            background-color: var(--card-bg);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-sm);
+            width: 100%;
+            max-width: 800px;
+            padding: 2.5rem;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .header h1 {
+            font-size: 1.75rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .header p {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+        }
+
+        .upload-area {
+            border: 2px dashed var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 3rem 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+            margin-bottom: 1.5rem;
+            position: relative;
+        }
+
+        .upload-area:hover {
+            background-color: #f1f3f4;
+        }
+
+        .upload-area input[type="file"] {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        .controls {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1.5rem;
+            padding: 1rem;
+            background-color: #f1f3f4;
+            border-radius: var(--radius-md);
+        }
+
+        .controls label {
+            font-weight: 500;
+            font-size: 0.95rem;
+        }
+
+        .controls input[type="number"] {
+            width: 80px;
+            padding: 0.5rem;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 1rem;
+            text-align: center;
+            outline: none;
+        }
+
+        .controls input[type="number"]:focus {
+            border-color: #1a73e8;
+        }
+
+        .preview-container {
+            width: 100%;
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            background-color: #e8eaed;
+            margin-bottom: 2rem;
+            display: none;
+            position: relative;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: auto;
+        }
+
+        .action-btn {
+            display: block;
+            width: 100%;
+            padding: 1rem;
+            border: none;
+            border-radius: 50px;
+            background: var(--accent-gradient);
+            color: white;
+            font-size: 1rem;
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+            transition: opacity 0.2s ease, transform 0.1s ease;
+            box-shadow: var(--shadow-md);
+        }
+
+        .action-btn:hover {
+            opacity: 0.9;
+        }
+
+        .action-btn:active {
+            transform: scale(0.98);
+        }
+
+        .action-btn:disabled {
+            background: #dadce0;
+            color: #9aa0a6;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="header">
+            <h1>Divisor de Imagem</h1>
+            <p>Faça o upload do seu design contínuo e baixe as fatias em ZIP.</p>
+        </div>
+
+        <div class="upload-area">
+            <input type="file" id="imageInput" accept="image/png, image/jpeg, image/webp">
+            <span style="font-weight: 500; color: #1a73e8;">Clique ou arraste a imagem aqui</span>
+        </div>
+
+        <div class="controls">
+            <label for="sliceCount">Número de fatias (colunas):</label>
+            <input type="number" id="sliceCount" value="6" min="2" max="10">
+        </div>
+
+        <div class="preview-container" id="previewContainer">
+            <canvas id="previewCanvas"></canvas>
+        </div>
+
+        <button id="downloadBtn" class="action-btn" disabled>Processar e Baixar ZIP</button>
+    </div>
+
+    <script>
+        const imageInput = document.getElementById('imageInput');
+        const sliceCountInput = document.getElementById('sliceCount');
+        const previewContainer = document.getElementById('previewContainer');
+        const previewCanvas = document.getElementById('previewCanvas');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const ctx = previewCanvas.getContext('2d');
+
+        let originalImage = new Image();
+
+        // Carregar imagem e gerar preview
+        imageInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                originalImage.onload = function() {
+                    previewContainer.style.display = 'block';
+                    downloadBtn.disabled = false;
+                    drawPreview();
+                }
+                originalImage.src = event.target.result;
+            }
+            reader.readAsDataURL(file);
+        });
+
+        // Atualizar preview quando o número de fatias mudar
+        sliceCountInput.addEventListener('input', drawPreview);
+
+        function drawPreview() {
+            if (!originalImage.src) return;
+
+            const slices = parseInt(sliceCountInput.value) || 2;
+            
+            // Ajustar o canvas para exibir proporcionalmente no container
+            const containerWidth = previewContainer.clientWidth;
+            const scale = containerWidth / originalImage.width;
+            
+            previewCanvas.width = originalImage.width * scale;
+            previewCanvas.height = originalImage.height * scale;
+
+            // Desenhar a imagem escalada
+            ctx.drawImage(originalImage, 0, 0, previewCanvas.width, previewCanvas.height);
+
+            // Desenhar as linhas de corte (guias visuais)
+            ctx.strokeStyle = '#ff004c'; // Cor contrastante para a linha de corte
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]); // Linha tracejada
+
+            const sliceWidth = previewCanvas.width / slices;
+
+            for (let i = 1; i < slices; i++) {
+                ctx.beginPath();
+                ctx.moveTo(i * sliceWidth, 0);
+                ctx.lineTo(i * sliceWidth, previewCanvas.height);
+                ctx.stroke();
+            }
+            ctx.setLineDash([]); // Resetar dash
+        }
+
+        // Lógica de corte e geração do ZIP
+        downloadBtn.addEventListener('click', async function() {
+            if (!originalImage.src) return;
+
+            downloadBtn.textContent = "Processando...";
+            downloadBtn.disabled = true;
+
+            const slices = parseInt(sliceCountInput.value) || 2;
+            const sliceWidth = originalImage.width / slices;
+            const sliceHeight = originalImage.height;
+
+            const zip = new JSZip();
+            const imgFolder = zip.folder("carrossel_fatias");
+
+            // Processar cada fatia
+            for (let i = 0; i < slices; i++) {
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = sliceWidth;
+                tempCanvas.height = sliceHeight;
+                const tempCtx = tempCanvas.getContext('2d');
+
+                // Recortar a porção específica da imagem original
+                tempCtx.drawImage(
+                    originalImage, 
+                    i * sliceWidth, 0, sliceWidth, sliceHeight, // Coordenadas e tamanho na imagem original
+                    0, 0, sliceWidth, sliceHeight               // Coordenadas e tamanho no canvas temporário
+                );
+
+                // Converter canvas para blob (formato JPEG com alta qualidade)
+                const dataUrl = tempCanvas.toDataURL("image/jpeg", 1.0);
+                const base64Data = dataUrl.split(',')[1];
+                
+                // Adicionar ao ZIP
+                imgFolder.file(`fatia_${String(i + 1).padStart(2, '0')}.jpg`, base64Data, {base64: true});
+            }
+
+            // Gerar o arquivo ZIP e forçar o download
+            zip.generateAsync({type: "blob"}).then(function(content) {
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(content);
+                link.download = "carrossel_instagram.zip";
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+
+                // Restaurar botão
+                downloadBtn.textContent = "Processar e Baixar ZIP";
+                downloadBtn.disabled = false;
+            });
+        });
+
+        // Garantir que o preview se ajuste ao redimensionar a janela
+        window.addEventListener('resize', () => {
+            if (originalImage.src) {
+                drawPreview();
+            }
+        });
+    </script>
+</body>
+</html>
